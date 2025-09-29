@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ルーレット - 観客表示</title>
+<style>
+  body{font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; background:#f3f6fb;}
+  .wrap{width:420px; text-align:center; background:white; padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.08);}
+  .wheel{width:360px; height:360px; margin:10px auto; position:relative; border-radius:50%; overflow:hidden; border:6px solid #222; background: conic-gradient(#f1c40f,#e74c3c,#3498db,#2ecc71,#9b59b6,#e67e22,#16a085,#2980b9); transition: transform 4s cubic-bezier(.12,.9,.18,1);}
+  .pointer{position:absolute; left:50%; top:-18px; transform:translateX(-50%); width:0;height:0;border-left:18px solid transparent;border-right:18px solid transparent;border-bottom:28px solid #c0392b; z-index:3;}
+  .center{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:120px; height:120px; border-radius:50%; background:rgba(255,255,255,0.95); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:36px; z-index:2}
+  .labels{position:absolute; inset:0; pointer-events:none;}
+  .label{position:absolute; left:50%; top:12%; transform-origin:-140px 0; color:#fff; font-weight:700; text-shadow:0 1px 2px rgba(0,0,0,0.6);}
+  .footer{font-size:13px;color:#555;margin-top:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="position:relative;">
+    <div class="pointer" aria-hidden="true"></div>
+    <div id="wheel" class="wheel" aria-hidden="true"></div>
+    <div id="labels" class="labels"></div>
+    <div id="center" class="center">—</div>
+  </div>
+  <div class="footer">演者が決めた番号で止まります（手品用途）</div>
+</div>
+
+<!-- Firebase SDK (modular v9+) -->
+<script type="module">
+  // --- Firebase の設定をあなたのプロジェクトに置き換えてください ---
+  const firebaseConfig = {
+    apiKey: "AIzaSyA1LnpXvoaTGbzQdOlAkcOPXW-8vrcnYxU",
+authDomain: "roulette-7ee9d.firebaseapp.com",
+databaseURL: "https://roulette-7ee9d-default-rtdb.firebaseio.com",
+projectId: "roulette-7ee9d",
+storageBucket: "roulette-7ee9d.firebasestorage.app",
+messagingSenderId: "657226901613",
+appId: "1:657226901613:web:1cceee27d98d0866223764",
+measurementId: "G-576DS7K0SG"
+  };
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const N = 37;
+  const anglePer = 360 / N;
+  const wheel = document.getElementById('wheel');
+  const labelsEl = document.getElementById('labels');
+  const center = document.getElementById('center');
+
+  // ラベルを周りに配置
+  for(let i=0;i<N;i++){
+    const num = i+1;
+    const el = document.createElement('div');
+    el.className='label';
+    el.textContent = num;
+    el.style.transformOrigin = '-160px 0';
+    el.style.transform = `rotate(${i * anglePer}deg)`;
+    labelsEl.appendChild(el);
+  }
+
+  // DB の nextResult を監視
+  const nextRef = ref(db, 'nextResult');
+  let animating = false;
+  let currentRotation = 0;
+
+  onValue(nextRef, (snap) => {
+    const val = snap.val();
+    if (val === null) return;
+    // val は 1..37 の番号（もしくはオブジェクトの形にしているなら取り出す）
+    const targetNum = Number(val);
+    if (!targetNum || targetNum < 1 || targetNum > N) return;
+    // 実行：スピンアニメーションして targetNum に止める
+    spinToNumber(targetNum);
+  });
+
+  function spinToNumber(targetNum){
+    if (animating) return;
+    animating = true;
+    center.textContent = '…';
+    // targetNum のインデックスと角度
+    const index = targetNum - 1;
+    const targetAngleForIndex = index * anglePer + anglePer/2;
+    // wheel の回転は逆向きで計算
+    const extraRounds = 6 + Math.floor(Math.random()*3); // 6~8
+    const finalRotation = 360 * extraRounds + (360 - targetAngleForIndex);
+    // apply transform
+    wheel.style.transition = 'transform 4.5s cubic-bezier(.12,.9,.18,1)';
+    // reflow
+    wheel.getBoundingClientRect();
+    wheel.style.transform = `rotate(${finalRotation}deg)`;
+    currentRotation = finalRotation % 360;
+
+    function onEnd(){
+      wheel.removeEventListener('transitionend', onEnd);
+      // 軽い戻しアニメーションで安定させる
+      setTimeout(()=> {
+        wheel.style.transition = 'transform 0.6s ease-out';
+        wheel.style.transform = `rotate(${currentRotation}deg)`;
+        wheel.addEventListener('transitionend', function tidy(){
+          wheel.removeEventListener('transitionend', tidy);
+          center.textContent = String(targetNum);
+          animating = false;
+        });
+      }, 80);
+    }
+    wheel.addEventListener('transitionend', onEnd);
+  }
+
+  // 初期表示
+  center.textContent = '-';
+</script>
+</body>
+</html>
