@@ -105,15 +105,20 @@ onValue(nextRef, snap=>{
 randomBtn.addEventListener('click', async ()=>{
   if(animating) return;
   try{
+    let chosen = null;
     await runTransaction(remainingRef, curr=>{
       if(!curr || curr.length===0) return curr;
       const arr = Array.isArray(curr)? curr.slice() : Object.values(curr);
       const idx = Math.floor(Math.random()*arr.length);
-      const chosen = arr[idx];
-      arr.splice(idx,1);
-      set(nextRef, chosen); // トランザクション内で直接セット
+      chosen = arr[idx];
+      arr.splice(idx, 1); // 選んだ番号を削除
       return arr;
     });
+    if(!chosen) {
+      alert('残り番号がありません');
+      return;
+    }
+    await set(nextRef, chosen); // トランザクション完了後に nextResult にセット
   }catch(e){
     alert('失敗: '+e.message);
   }
