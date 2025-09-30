@@ -35,7 +35,7 @@ button:hover { background:#2980b9; }
     <button id="setForced">次を固定</button>
   </div>
 
-  <!-- allowed 候補を設定するUI（任意で利用可能） -->
+  <!-- allowed 候補を設定するUI -->
   <div>
     <input type="text" id="allowedInput" placeholder="例: 5,7,22">
     <button id="setAllowed">候補を設定</button>
@@ -52,6 +52,7 @@ button:hover { background:#2980b9; }
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
 import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 
 const firebaseConfig = { 
 apiKey: "AIzaSyA1LnpXvoaTGbzQdOlAkcOPXW-8vrcnYxU",
@@ -65,6 +66,12 @@ measurementId: "G-576DS7K0SG" };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
+
+// --- 認証（前と同じアカウントを設定してください） ---
+signInWithEmailAndPassword(auth, "your-email@example.com", "your-password")
+  .then(() => console.log("Controller ログイン成功"))
+  .catch(err => console.error("ログイン失敗:", err));
 
 const remainingRef = ref(db,'remaining');
 const allowedRef   = ref(db,'allowed');
