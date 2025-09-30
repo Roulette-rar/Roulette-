@@ -33,10 +33,10 @@ body {
   width:200px; height:200px; border-radius:50%;
   background:rgba(255,255,255,0.95);
   display:flex; align-items:center; justify-content:center;
-  font-weight:900; font-size:96px; /* 中央の数字を大きく */
+  font-weight:900; font-size:96px;
   z-index:2;
 }
-.labels {display:none;} /* 円周の数字を消す */
+.labels {display:none;}
 #remainingText {margin-top:6px; font-size:16px; color:#333;}
 button#audience-spin {
   margin-top:15px; padding:8px 16px;
@@ -54,15 +54,13 @@ button#audience-spin:hover { background:#2980b9; }
     <div id="center" class="center">—</div>
   </div>
   <div id="remainingText">残り: 読み込み中…</div>
-  <!-- ★追加：観客側からランダムに回すボタン -->
   <button id="audience-spin">ルーレット開始</button>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
 import { getDatabase, ref, onValue, get, child, set } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
-
+import { getAuth } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 
 const firebaseConfig = { 
 apiKey: "AIzaSyA1LnpXvoaTGbzQdOlAkcOPXW-8vrcnYxU",
@@ -72,11 +70,11 @@ projectId: "roulette-7ee9d",
 storageBucket: "roulette-7ee9d.firebasestorage.app",
 messagingSenderId: "657226901613",
 appId: "1:657226901613:web:1cceee27d98d0866223764",
-measurementId: "G-576DS7K0SG"};
+measurementId: "G-576DS7K0SG" };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const auth = getAuth(app);
+getAuth(app); // 認証はcontrollerと同じユーザーでログイン済みが前提
 
 const N = 37;
 const wheel = document.getElementById('wheel');
@@ -132,24 +130,37 @@ function spinToNumber(targetNum){
 }
 center.textContent='-';
 
-/* ★追加：観客側からランダムに出すボタンの処理 */
+// ルーレット開始ボタン
 document.getElementById('audience-spin').addEventListener('click', async () => {
-  // 必要に応じてここでログイン
-  // await signInWithEmailAndPassword(auth, "管理者メール", "パスワード");
+  // 1. forcedNext を確認
+  const forcedSnap = await get(child(ref(db), 'forcedNext'));
+  if (forcedSnap.exists() && forcedSnap.val() !== null) {
+    const forcedVal = forcedSnap.val();
+    await set(ref(db,'nextResult'), forcedVal);
+    await set(ref(db,'forcedNext'), null);
+    // 残数から削除
+    const remSnap = await get(child(ref(db), 'remaining'));
+    if (remSnap.exists()) {
+      const arr = remSnap.val();
+      const idx = arr.indexOf(forcedVal);
+      if (idx > -1) {
+        arr.splice(idx,1);
+        await set(ref(db,'remaining'), arr);
+      }
+    }
+    return;
+  }
 
-  const snapshot = await get(child(ref(db), 'remaining'));
-  if (!snapshot.exists()) { alert("残りがありません"); return; }
-
-  const list = snapshot.val();
-  const arr = Array.isArray(list) ? list : Object.values(list);
-  if (arr.length === 0) { alert("残りがありません"); return; }
-
+  // 2. 通常ランダム
+  const remSnap = await get(child(ref(db), 'remaining'));
+  if (!remSnap.exists()) { alert("残りがありません"); return; }
+  const arr = remSnap.val();
+  if (!Array.isArray(arr) || arr.length === 0) { alert("残りがありません"); return; }
   const idx = Math.floor(Math.random() * arr.length);
   const selected = arr[idx];
-
   await set(ref(db, 'nextResult'), selected);
-  arr.splice(idx, 1);
-  await set(ref(db, 'remaining'), arr);
+  arr.splice(idx,1);
+  await set(ref(db,'remaining'), arr);
 });
 </script>
 </body>

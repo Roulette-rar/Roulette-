@@ -3,196 +3,105 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>ルーレット - 演者コントローラ</title>
+<title>ルーレット - コントローラ</title>
 <style>
-  body{font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0; background:#f7fbff;}
-  .panel{width:420px; background:white; padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.08);}
-  h1{font-size:18px;margin:0 0 12px 0;}
-  .controls{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;}
-  input[type="number"]{width:120px; padding:8px; border-radius:8px; border:1px solid #ddd;}
-  button{padding:10px 12px; border-radius:8px; border:none; background:#2d9cdb; color:white; font-weight:700; cursor:pointer;}
-  button.secondary{background:#6c757d;}
-  .remaining{margin-top:10px; font-size:14px; color:#333;}
-  .login{margin-bottom:8px;}
-  .status{font-size:13px;color:#666;margin-top:6px;}
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+  display:flex; align-items:center; justify-content:center;
+  min-height:100vh; margin:0; background:#eef2f8;
+}
+.wrap {
+  width:420px; text-align:center; background:white;
+  padding:18px; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.08);
+}
+input, button {
+  margin:6px; padding:6px 10px; font-size:16px;
+}
+button {
+  border:none; border-radius:6px; cursor:pointer;
+  background:#3498db; color:white;
+}
+button:hover { background:#2980b9; }
+#remainingText {margin-top:10px; font-size:16px; color:#333;}
 </style>
 </head>
 <body>
-<div class="panel">
-  <h1>演者コントローラ</h1>
+<div class="wrap">
+  <h2>コントローラ</h2>
 
-  <div class="login" id="loginUI">
-    <input id="email" placeholder="演者メール" />
-    <input id="password" placeholder="パスワード" type="password" />
-    <button id="loginBtn">ログイン</button>
+  <!-- 次を固定するUI -->
+  <div>
+    <input type="number" id="forcedInput" placeholder="次に出す数字">
+    <button id="setForced">次を固定</button>
   </div>
 
-  <div id="mainUI" style="display:none;">
-    <div class="controls">
-      <input id="numInput" type="number" min="1" max="37" placeholder="指定番号(1-37)" />
-      <button id="forceBtn">指定番号で出す</button>
-      <button id="randBtn" class="secondary">ランダムで出す</button>
-      <button id="resetBtn" class="secondary">全てリセット</button>
-    </div>
-    <div class="remaining">
-      <div>残り番号: <span id="remainingList">読み込み中…</span></div>
-    </div>
-    <div class="status" id="status">ステータス: 未ログイン</div>
+  <!-- allowed 候補を設定するUI（任意で利用可能） -->
+  <div>
+    <input type="text" id="allowedInput" placeholder="例: 5,7,22">
+    <button id="setAllowed">候補を設定</button>
   </div>
+
+  <!-- 残数リセット -->
+  <div>
+    <button id="resetRemaining">残数をリセット</button>
+  </div>
+
+  <div id="remainingText">残り: 読み込み中…</div>
 </div>
 
 <script type="module">
-  // --- Firebase の設定をあなたのプロジェクトに置き換えてください ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyA1LnpXvoaTGbzQdOlAkcOPXW-8vrcnYxU",
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
+
+const firebaseConfig = { 
+apiKey: "AIzaSyA1LnpXvoaTGbzQdOlAkcOPXW-8vrcnYxU",
 authDomain: "roulette-7ee9d.firebaseapp.com",
 databaseURL: "https://roulette-7ee9d-default-rtdb.firebaseio.com",
 projectId: "roulette-7ee9d",
 storageBucket: "roulette-7ee9d.firebasestorage.app",
 messagingSenderId: "657226901613",
 appId: "1:657226901613:web:1cceee27d98d0866223764",
-measurementId: "G-576DS7K0SG"
-  };
+measurementId: "G-576DS7K0SG" };
 
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
-  import { getDatabase, ref, set, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
-  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const auth = getAuth(app);
+const remainingRef = ref(db,'remaining');
+const allowedRef   = ref(db,'allowed');
+const forcedRef    = ref(db,'forcedNext');
 
-  const N = 37;
-  const remainingRef = ref(db, 'remaining');
-  const nextRef = ref(db, 'nextResult');
+const N = 37;
 
-  const loginUI = document.getElementById('loginUI');
-  const mainUI = document.getElementById('mainUI');
-  const loginBtn = document.getElementById('loginBtn');
-  const emailInput = document.getElementById('email');
-  const passInput = document.getElementById('password');
-  const numInput = document.getElementById('numInput');
-  const forceBtn = document.getElementById('forceBtn');
-  const randBtn = document.getElementById('randBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const remainingList = document.getElementById('remainingList');
-  const statusEl = document.getElementById('status');
+// --- 残数リセット ---
+document.getElementById("resetRemaining").addEventListener("click", async () => {
+  const arr = Array.from({length:N}, (_,i)=>i+1);
+  await set(remainingRef, arr);
+  alert("残数をリセットしました");
+});
 
-  // ログイン
-  loginBtn.addEventListener('click', async () => {
-    const email = emailInput.value.trim();
-    const pass = passInput.value;
-    if (!email || !pass) return alert('メールとパスワードを入力してください');
-    try {
-      const cred = await signInWithEmailAndPassword(auth, email, pass);
-      console.log('ログイン成功', cred.user.uid);
-    } catch(e){
-      alert('ログインに失敗しました: ' + e.message);
-    }
-  });
+// --- 候補を設定 ---
+document.getElementById("setAllowed").addEventListener("click", async () => {
+  const raw = document.getElementById("allowedInput").value;
+  const nums = raw.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+  await set(allowedRef, nums);
+  alert("候補を設定しました: " + nums.join(", "));
+});
 
-  onAuthStateChanged(auth, (user) => {
-    if (user){
-      loginUI.style.display='none';
-      mainUI.style.display='block';
-      statusEl.textContent = `ステータス: ログイン済 (${user.email})`;
-    } else {
-      loginUI.style.display='block';
-      mainUI.style.display='none';
-      statusEl.textContent = 'ステータス: 未ログイン';
-    }
-  });
+// --- 次を固定 ---
+document.getElementById("setForced").addEventListener("click", async () => {
+  const val = parseInt(document.getElementById("forcedInput").value);
+  if (isNaN(val)) { alert("数字を入力してください"); return; }
+  await set(forcedRef, val);
+  alert("次の1回は " + val + " に固定しました");
+});
 
-  // 残り番号の表示を監視
-  onValue(remainingRef, (snap) => {
-    const val = snap.val();
-    if (!val){
-      remainingList.textContent = '(空)';
-      return;
-    }
-    // val を配列として表示
-    if (Array.isArray(val)){
-      remainingList.textContent = val.join(', ');
-    } else if (typeof val === 'object'){
-      // map -> array
-      const arr = Object.values(val).filter(x=>x!=null);
-      remainingList.textContent = arr.join(', ');
-    } else {
-      remainingList.textContent = String(val);
-    }
-  });
-
-  // 指定番号で出す（トランザクションで remaining から消して nextResult にセット）
-  forceBtn.addEventListener('click', async () => {
-    const num = Number(numInput.value);
-    if (!num || num < 1 || num > N) return alert('1〜37の番号を入力してください');
-    try {
-      await runTransaction(remainingRef, (curr) => {
-        if (curr == null) return curr;
-        // curr が配列なら処理
-        let arr = Array.isArray(curr) ? curr.slice() : Object.values(curr);
-        if (!arr.includes(num)) {
-          throw new Error('すでに選ばれたか存在しません');
-        }
-        // remove
-        arr = arr.filter(x => x !== num);
-        return arr;
-      });
-      // 成功したら nextResult にセット
-      await set(nextRef, num);
-      alert(`${num} を送信しました`);
-    } catch (e) {
-      alert('失敗: ' + e.message);
-    }
-  });
-
-  // ランダムで出す（残りからランダムに選ぶ）
-  randBtn.addEventListener('click', async () => {
-    try {
-      // トランザクションで一つ取り出して remaining を更新し nextResult を書く
-      await runTransaction(remainingRef, (curr) => {
-        if (!curr) return curr;
-        const arr = Array.isArray(curr) ? curr.slice() : Object.values(curr);
-        if (arr.length === 0) {
-          throw new Error('残りがありません');
-        }
-        // crypto を使って安全にランダム選択（here in client during transaction we can't call crypto inside runTransaction callback due to sync nature)
-        // Instead choose index via Date.now() as fallback (acceptable for magic use)
-        const idx = Math.floor((Date.now() % 1000000) / 1000000 * arr.length);
-        const num = arr[idx];
-        arr.splice(idx,1);
-        // also set nextResult separately after transaction
-        // return new remaining list
-        // Attach the chosen number in a special path? Here return remaining only.
-        // We'll set nextResult afterwards.
-        window.__chosenRandom = num; // temporary store
-        return arr;
-      });
-      const chosen = window.__chosenRandom;
-      if (!chosen) throw new Error('選択失敗');
-      await set(nextRef, chosen);
-      alert(`ランダムで ${chosen} を送信しました`);
-    } catch (e) {
-      alert('失敗: ' + e.message);
-    }
-  });
-
-  // 全てリセット（開発用。管理者だけが行うこと）
-  resetBtn.addEventListener('click', async () => {
-    if (!confirm('残り番号を1..37にリセットしますか？（本番では慎重に）')) return;
-    try {
-      const arr = Array.from({length:N}, (_,i) => i+1);
-      await set(remainingRef, arr);
-      await set(nextRef, 0);
-      alert('リセットしました');
-    } catch(e){
-      alert('リセット失敗: ' + e.message);
-    }
-  });
-
-  // 初回：もし remaining が空なら初期化する仕組み（任意）
-  // （本番では管理画面で一度だけリセットするのが良い）
-  // onValue で初回読み込み時に存在しなければ初期化することもできます。
+// --- 残数表示を同期 ---
+onValue(remainingRef, snap=>{
+  const val = snap.val();
+  const arr = Array.isArray(val)? val : Object.values(val||{}).filter(x=>x!=null);
+  document.getElementById("remainingText").textContent =
+    arr.length>0 ? `残り: ${arr.join(', ')}` : '残りなし';
+});
 </script>
 </body>
 </html>
